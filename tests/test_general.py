@@ -346,6 +346,7 @@ def swap_post_check(ib_token_out, amount_in, account):
     return (homora_earn_swap, token_in_safebox, token_out_safebox, estimate_amount_out, output.return_value)
 
 
+# swap from ibethv2 vto ibusdtv2
 def test_general_eth_usdt(account):
     # swap parameters
     amount_in = 992637183
@@ -353,13 +354,10 @@ def test_general_eth_usdt(account):
     token_out = IBUSDC_ADDRESS
     # deploy contract and approve input token
     (homora_earn_swap, _, _, estimate_amount_out, actual_amount_out) = swap_post_check(token_out, amount_in, account)
-    assert check_expected(
-        actual_amount_out,
-        homora_earn_swap.tokenToIB(token_out, estimate_amount_out),
-        0.5,
-    )
+    assert check_expected(actual_amount_out, homora_earn_swap.tokenToIB(token_out, estimate_amount_out), 0.5,)
 
 
+# swap from ibusdtv2 to ibethv2
 def test_general_usdt_eth(account):
     # swap parameters
     amount_in = 8e12
@@ -367,13 +365,10 @@ def test_general_usdt_eth(account):
     token_out = IBETH_ADDRESS
     # deploy contract and approve input token
     (homora_earn_swap, _, _, estimate_amount_out, actual_amount_out) = swap_pre_check(token_in, amount_in, account)
-    assert check_expected(
-        actual_amount_out,
-        homora_earn_swap.tokenToIB(token_out, estimate_amount_out),
-        0.5,
-    )
+    assert check_expected(actual_amount_out, homora_earn_swap.tokenToIB(token_out, estimate_amount_out), 0.5,)
 
 
+# swap from ibusdtv2 to ibusdcv2
 def test_general_usdt_usdc(account):
     # swap parameters
     amount_in = 8e12
@@ -383,13 +378,10 @@ def test_general_usdt_usdc(account):
     (homora_earn_swap, _, _, estimate_amount_out, actual_amount_out) = double_swap_check(
         token_in, token_out, amount_in, account
     )
-    assert check_expected(
-        actual_amount_out,
-        homora_earn_swap.tokenToIB(token_out, estimate_amount_out),
-        0.5,
-    )
+    assert check_expected(actual_amount_out, homora_earn_swap.tokenToIB(token_out, estimate_amount_out), 0.5,)
 
 
+# swap ibusdtv2 to ibdaiv2
 def test_general_usdt_dai(account):
     # swap parameters
     amount_in = 8e12
@@ -399,8 +391,5 @@ def test_general_usdt_dai(account):
     (homora_earn_swap, _, _, estimate_amount_out, actual_amount_out) = double_swap_check(
         token_in, token_out, amount_in, account
     )
-    assert check_expected(
-        actual_amount_out,
-        homora_earn_swap.tokenToIB(token_out, estimate_amount_out),
-        0.5,
-    )
+    assert check_expected(actual_amount_out, homora_earn_swap.tokenToIB(token_out, estimate_amount_out), 0.5,)
+
