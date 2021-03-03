@@ -1,4 +1,5 @@
 import pytest
+import brownie
 from brownie import accounts, Contract, HomoraIBSwap
 
 SAFEBOX_ABI = [
@@ -262,6 +263,8 @@ IBUSDC_ADDRESS = "0x08bd64BFC832F1C2B3e07e634934453bA7Fa2db2"
 DAI_ADDRESS = "0x6b175474e89094c44da98b954eedeac495271d0f"
 IBDAI_ADDRESS = "0xee8389d235E092b2945fE363e97CDBeD121A0439"
 
+WETH = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+
 utoken_to_ibtoken = dict(
     {
         IBETH_ADDRESS: IBETH_ADDRESS,
@@ -280,116 +283,23 @@ ibtoken_to_utoken = dict(
     }
 )
 
+deadline = 1e21
+
 
 @pytest.fixture
 def account():
     return accounts.at("0xcdc2F106E9694B16FFdBFCE2a2612076Ce44b4FE", force=True)
 
 
-def check_expected(expected, actual, percent_threshold):
-    return abs(actual - expected) / expected * 100 < percent_threshold
-
-
-def double_swap_check(ib_token_in, ib_token_out, amount_in, account):
-    # set input and output ibtoken contracts
-    token_in_safebox = Contract.from_abi("SafeBox", ib_token_in, SAFEBOX_ABI)
-    token_out_safebox = Contract.from_abi("SafeBox", ib_token_out, SAFEBOX_ABI)
-    # deploy contract
+def test_revert_send_ether(account):
     homora_earn_swap = HomoraIBSwap.deploy({"from": account})
-    # estimate expected output token amount from swap
-    underlying_amount_in = homora_earn_swap.ibToToken(ib_token_in, amount_in)
-    estimate_amount_first_swap = homora_earn_swap.getEstimateAmountOut(
-        1, ibtoken_to_utoken[ib_token_in], underlying_amount_in
-    )[1]
-    estimate_amount_out = homora_earn_swap.getEstimateAmountOut(
-        0, ibtoken_to_utoken[ib_token_out], estimate_amount_first_swap
-    )[1]
-    # perform the swap
-    token_in_safebox.approve(homora_earn_swap.address, 1e36, {"from": account})
-    output = homora_earn_swap.swap(ib_token_in, ib_token_out, amount_in, {"from": account})
-    return (homora_earn_swap, token_in_safebox, token_out_safebox, estimate_amount_out, output.return_value)
+    with brownie.reverts("unexpected-eth-sender"):
+        account.transfer(homora_earn_swap, "0.5 ether")
 
 
-def swap_pre_check(ib_token_in, amount_in, account):
-    ib_token_out = IBETH_ADDRESS
-    # set input and output ibtoken contracts
-    token_in_safebox = Contract.from_abi("SafeBox", ib_token_in, SAFEBOX_ABI)
-    token_out_safebox = Contract.from_abi("SafeBox", ib_token_out, SAFEBOX_ABI)
-    # deploy contract
+def test_revert_add_ib_tokens(account):
+    ens = accounts.at("0x37fabbfaf80501c68ee77625d620d6501b35417e", force=True)
     homora_earn_swap = HomoraIBSwap.deploy({"from": account})
-    # estimate expected output token amount from swap
-    underlying_amount_in = homora_earn_swap.ibToToken(ib_token_in, amount_in)
-    estimate_amount_out = homora_earn_swap.getEstimateAmountOut(
-        1, ibtoken_to_utoken[ib_token_in], underlying_amount_in
-    )[1]
-    # perform the swap
-    token_in_safebox.approve(homora_earn_swap.address, 1e36, {"from": account})
-    output = homora_earn_swap.swap(ib_token_in, ib_token_out, amount_in, {"from": account})
-    return (homora_earn_swap, token_in_safebox, token_out_safebox, estimate_amount_out, output.return_value)
-
-
-def swap_post_check(ib_token_out, amount_in, account):
-    ib_token_in = IBETH_ADDRESS
-    # set input and output ibtoken contracts
-    token_in_safebox = Contract.from_abi("SafeBox", ib_token_in, SAFEBOX_ABI)
-    token_out_safebox = Contract.from_abi("SafeBox", ib_token_out, SAFEBOX_ABI)
-    # deploy contract
-    homora_earn_swap = HomoraIBSwap.deploy({"from": account})
-    # estimate expected output token amount from swap
-    underlying_amount_in = homora_earn_swap.ibToToken(ib_token_in, amount_in)
-    estimate_amount_out = homora_earn_swap.getEstimateAmountOut(
-        0, ibtoken_to_utoken[ib_token_out], underlying_amount_in
-    )[1]
-    # perform the swap
-    token_in_safebox.approve(homora_earn_swap.address, 1e36, {"from": account})
-    output = homora_earn_swap.swap(ib_token_in, ib_token_out, amount_in, {"from": account})
-    return (homora_earn_swap, token_in_safebox, token_out_safebox, estimate_amount_out, output.return_value)
-
-
-# swap from ibethv2 vto ibusdtv2
-def test_general_eth_usdt(account):
-    # swap parameters
-    amount_in = 992637183
-    token_in = IBETH_ADDRESS
-    token_out = IBUSDC_ADDRESS
-    # deploy contract and approve input token
-    (homora_earn_swap, _, _, estimate_amount_out, actual_amount_out) = swap_post_check(token_out, amount_in, account)
-    assert check_expected(actual_amount_out, homora_earn_swap.tokenToIB(token_out, estimate_amount_out), 0.5,)
-
-
-# swap from ibusdtv2 to ibethv2
-def test_general_usdt_eth(account):
-    # swap parameters
-    amount_in = 8e12
-    token_in = IBUSDT_ADDRESS
-    token_out = IBETH_ADDRESS
-    # deploy contract and approve input token
-    (homora_earn_swap, _, _, estimate_amount_out, actual_amount_out) = swap_pre_check(token_in, amount_in, account)
-    assert check_expected(actual_amount_out, homora_earn_swap.tokenToIB(token_out, estimate_amount_out), 0.5,)
-
-
-# swap from ibusdtv2 to ibusdcv2
-def test_general_usdt_usdc(account):
-    # swap parameters
-    amount_in = 8e12
-    token_in = IBUSDT_ADDRESS
-    token_out = IBUSDC_ADDRESS
-    # deploy contract and approve input token
-    (homora_earn_swap, _, _, estimate_amount_out, actual_amount_out) = double_swap_check(
-        token_in, token_out, amount_in, account
-    )
-    assert check_expected(actual_amount_out, homora_earn_swap.tokenToIB(token_out, estimate_amount_out), 0.5,)
-
-
-# swap ibusdtv2 to ibdaiv2
-def test_general_usdt_dai(account):
-    # swap parameters
-    amount_in = 8e12
-    token_in = IBUSDT_ADDRESS
-    token_out = IBDAI_ADDRESS
-    # deploy contract and approve input token
-    (homora_earn_swap, _, _, estimate_amount_out, actual_amount_out) = double_swap_check(
-        token_in, token_out, amount_in, account
-    )
-    assert check_expected(actual_amount_out, homora_earn_swap.tokenToIB(token_out, estimate_amount_out), 0.5,)
+    with brownie.reverts("not the governor"):
+        tx = homora_earn_swap.addIBTokens([IBUSDT_ADDRESS, IBUSDC_ADDRESS, IBDAI_ADDRESS], {"from": ens})
 

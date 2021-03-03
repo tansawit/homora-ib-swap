@@ -23,15 +23,14 @@ contract HomoraIBSwap is Governable {
     address public constant IBETHV2 =
         0xeEa3311250FE4c3268F8E684f7C87A82fF183Ec1;
 
-    address public constant UNISWAP_ROUTER_ADDRESS =
-        0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-    IUniswapV2Router02 public constant uniswapRouter =
-        IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
+    IUniswapV2Router02 public immutable uniswapRouter;
 
-    address public constant WETH = uniswapRouter.WETH();
+    address public immutable WETH;
 
-    constructor() public {
+    constructor(address _uniswapAddress) public {
         __Governable__init();
+        uniswapRouter = IUniswapV2Router02(_uniswapAddress);
+        WETH = IUniswapV2Router02(_uniswapAddress).WETH();
         isIBToken[IBETHV2] = true;
     }
 
@@ -47,7 +46,7 @@ contract HomoraIBSwap is Governable {
 
             SafeBox safebox = SafeBox(tokens[idx]);
             IERC20(safebox.uToken()).safeApprove(
-                UNISWAP_ROUTER_ADDRESS,
+                address(uniswapRouter),
                 uint256(-1)
             );
             IERC20(safebox.uToken()).safeApprove(address(safebox), uint256(-1));
@@ -214,8 +213,7 @@ contract HomoraIBSwap is Governable {
 
     receive() external payable {
         require(
-            address(msg.sender) == IBETHV2 ||
-                address(msg.sender) == UNISWAP_ROUTER_ADDRESS,
+            msg.sender == IBETHV2 || msg.sender == address(uniswapRouter),
             "unexpected-eth-sender"
         );
     }
