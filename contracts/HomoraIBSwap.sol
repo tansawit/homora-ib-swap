@@ -1,71 +1,116 @@
+// SPDX-License-Identifier: GPL-3.0
+
 pragma solidity ^0.7.0;
 
 import "OpenZeppelin/openzeppelin-contracts@3.4.0/contracts/token/ERC20/IERC20.sol";
 import "OpenZeppelin/openzeppelin-contracts@3.4.0/contracts/token/ERC20/SafeERC20.sol";
 import "OpenZeppelin/openzeppelin-contracts@3.4.0/contracts/math/SafeMath.sol";
+import "./Governable.sol";
 import "../interfaces/IUniswapV2Router02.sol";
 import "../interfaces/ISafeBox.sol";
 import "../interfaces/ISafeBoxETH.sol";
 import "../interfaces/ICErc20.sol";
 import "../interfaces/ICyToken.sol";
 
-contract HomoraIBSwap {
+/// @title Homora IBToken Swap
+/// @author Sawit Trisirisatayawong (@tansawit)
+contract HomoraIBSwap is Governable {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
-    address private constant IBETHV2 =
+    mapping(address => bool) public isIBToken;
+
+    address public constant IBETHV2 =
         0xeEa3311250FE4c3268F8E684f7C87A82fF183Ec1;
-    address private constant IBUSDTV2 =
-        0x020eDC614187F9937A1EfEeE007656C6356Fb13A;
-    address private constant IBUSDCV2 =
-        0x08bd64BFC832F1C2B3e07e634934453bA7Fa2db2;
-    address private constant IBDAIV2 =
-        0xee8389d235E092b2945fE363e97CDBeD121A0439;
 
-    address internal constant UNISWAP_ROUTER_ADDRESS =
-        0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-    IUniswapV2Router02 public uniswapRouter;
+    address UNISWAP_ROUTER_ADDRESS = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+    IUniswapV2Router02 public uniswapRouter =
+        IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
 
-    constructor() {
-        uniswapRouter = IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
+    constructor() public {
+        __Governable__init();
+        isIBToken[IBETHV2] = true;
     }
 
-    function supported(address token) public returns (bool) {
-        if (
-            token == IBETHV2 ||
-            token == IBUSDTV2 ||
-            token == IBUSDCV2 ||
-            token == IBDAIV2
-        ) {
-            return true;
+    /// @notice add a list of token addresses as supported ibToken
+    /// @param tokens list of symbols to support
+    function addIBTokens(address[] memory tokens) external onlyGov {
+        for (uint256 idx = 0; idx < tokens.length; idx++) {
+            if (!isIBToken[tokens[idx]] && tokens[idx] != IBETHV2) {
+                isIBToken[tokens[idx]] = true;
+
+                SafeBox safebox = SafeBox(tokens[idx]);
+                IERC20(safebox.uToken()).safeApprove(
+                    UNISWAP_ROUTER_ADDRESS,
+                    uint256(-1)
+                );
+                IERC20(safebox.uToken()).safeApprove(
+                    address(safebox),
+                    uint256(-1)
+                );
+            }
         }
-        return false;
     }
 
-    function path(uint256 order, address token)
+    function getPath(address tokenIn, address tokenOut)
         internal
         view
         returns (address[] memory)
     {
-        address[] memory path = new address[](2);
-        if (order == 0) {
-            path[0] = uniswapRouter.WETH();
-            path[1] = token;
+        address[] memory path;
+        address underlyingTokenIn;
+        address underlyingTokenOut;
+
+        if (tokenIn == IBETHV2) {
+            underlyingTokenIn = uniswapRouter.WETH();
         } else {
-            path[0] = token;
+            underlyingTokenIn = SafeBox(tokenIn).uToken();
+        }
+
+        if (tokenOut == IBETHV2) {
+            underlyingTokenOut = uniswapRouter.WETH();
+        } else {
+            underlyingTokenOut = SafeBox(tokenOut).uToken();
+        }
+
+        if (
+            underlyingTokenIn == uniswapRouter.WETH() ||
+            underlyingTokenOut == uniswapRouter.WETH()
+        ) {
+            path = new address[](2);
+            if (underlyingTokenIn == uniswapRouter.WETH()) {
+                path[0] = uniswapRouter.WETH();
+                path[1] = underlyingTokenOut;
+            } else {
+                path[0] = underlyingTokenIn;
+                path[1] = uniswapRouter.WETH();
+            }
+        } else {
+            path = new address[](3);
+            path[0] = underlyingTokenIn;
             path[1] = uniswapRouter.WETH();
+            path[2] = underlyingTokenOut;
         }
         return path;
     }
 
-    function getEstimateAmountOut(
-        uint256 order,
-        address token,
+    /// @notice get the estimated outpout amount of each consecutive
+    /// swap along a path
+    /// @param tokenIn the address of the input token
+    /// @param tokenOut the address of the output token
+    /// @param amountIn the inputted amount of tokenIn
+    function getEstimatedAmountsOut(
+        address tokenIn,
+        address tokenOut,
         uint256 amountIn
     ) public view returns (uint256[] memory) {
-        return uniswapRouter.getAmountsOut(amountIn, path(order, token));
+        return
+            uniswapRouter.getAmountsOut(amountIn, getPath(tokenIn, tokenOut));
     }
 
+    /// @notice convert an amount of ibToken to that of the underlying token
+    /// @param ibToken the ibToken to get the underlying token amount of
+    /// @param ibTokenAmount the amount of ibToken to use for conversion
     function ibToToken(address ibToken, uint256 ibTokenAmount)
         external
         view
@@ -77,6 +122,9 @@ contract HomoraIBSwap {
         return tokenAmount;
     }
 
+    /// @notice convert an amount of token to that of the associated ibToken
+    /// @param ibToken the ibToken to get the token amount of
+    /// @param tokenAmount the amount of token to use for conversion
     function tokenToIB(address ibToken, uint256 tokenAmount)
         external
         view
@@ -88,35 +136,53 @@ contract HomoraIBSwap {
         return ibTokenAmount;
     }
 
+    /// @notice swap an ibToken to another ibToken
+    /// @param tokenIn the input ibToken
+    /// @param tokenOut the desired output ibToken
+    /// @param amountIn the amount of tokenIn to swap
+    /// @param amountOutMin minimum amount of output tokens that must be received
+    /// for the transaction not to revert
+    /// @param deadline timestamp after which the transaction will revert
     function swap(
         address tokenIn,
         address tokenOut,
-        uint256 amountIn
+        uint256 amountIn,
+        uint256 amountOutMin,
+        uint256 deadline
     ) external returns (uint256) {
-        require(supported(tokenIn), "token-in-not-supported");
-        require(supported(tokenOut), "token-out-not-supported");
+        require(tokenIn != tokenOut, "token-in-out-identical");
+        require(isIBToken[tokenIn], "token-in-not-supported");
+        require(isIBToken[tokenOut], "token-out-not-supported");
 
         SafeBox safeboxIn = SafeBox(tokenIn);
-
         safeboxIn.transferFrom(msg.sender, address(this), amountIn);
         safeboxIn.withdraw(amountIn);
 
-        uint256 deadline = block.timestamp.add(120);
+        uint256 underlyingBalance;
+        address[] memory path = getPath(tokenIn, tokenOut);
+        uint256 outputAmount;
 
         if (tokenIn != IBETHV2) {
             IERC20 underlying = IERC20(safeboxIn.uToken());
-            uint256 underlyingBalance = underlying.balanceOf(address(this));
+            underlyingBalance = underlying.balanceOf(address(this));
+        }
 
-            uint256 amountOutMin =
-                getEstimateAmountOut(1, safeboxIn.uToken(), underlyingBalance)[
-                    1
-                ]
-                    .mul(9)
-                    .div(10);
-            address[] memory path = path(1, safeboxIn.uToken());
-
-            underlying.safeApprove(UNISWAP_ROUTER_ADDRESS, underlyingBalance);
-
+        if (tokenIn != IBETHV2 && tokenOut != IBETHV2) {
+            uniswapRouter.swapExactTokensForTokens(
+                underlyingBalance,
+                amountOutMin,
+                path,
+                address(this),
+                deadline
+            );
+        } else if (tokenIn == IBETHV2) {
+            uniswapRouter.swapExactETHForTokens{value: address(this).balance}(
+                amountOutMin,
+                path,
+                address(this),
+                deadline
+            );
+        } else if (tokenOut == IBETHV2) {
             uniswapRouter.swapExactTokensForETH(
                 underlyingBalance,
                 amountOutMin,
@@ -125,7 +191,7 @@ contract HomoraIBSwap {
                 deadline
             );
         }
-        uint256 outputAmount;
+
         if (tokenOut == IBETHV2) {
             SafeBoxETH safeboxOut = SafeBoxETH(tokenOut);
             safeboxOut.deposit{value: address(this).balance}();
@@ -136,25 +202,6 @@ contract HomoraIBSwap {
             );
         } else {
             SafeBox safeboxOut = SafeBox(tokenOut);
-            IERC20 underlying = IERC20(safeboxOut.uToken());
-            uint256 underlyingBalance = underlying.balanceOf(address(this));
-
-            uint256 amountOutMin =
-                getEstimateAmountOut(
-                    0,
-                    safeboxOut.uToken(),
-                    address(this).balance
-                )[1]
-                    .mul(9)
-                    .div(10);
-            address[] memory path = path(0, safeboxOut.uToken());
-
-            uniswapRouter.swapExactETHForTokens{value: address(this).balance}(
-                amountOutMin,
-                path,
-                address(this),
-                deadline
-            );
 
             IERC20(safeboxOut.uToken()).approve(
                 address(safeboxOut),
@@ -169,5 +216,11 @@ contract HomoraIBSwap {
         return outputAmount;
     }
 
-    receive() external payable {}
+    receive() external payable {
+        require(
+            address(msg.sender) == IBETHV2 ||
+                address(msg.sender) == UNISWAP_ROUTER_ADDRESS,
+            "unexpected-eth-sender"
+        );
+    }
 }
