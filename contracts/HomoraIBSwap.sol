@@ -27,10 +27,10 @@ contract HomoraIBSwap is Governable {
 
     address public immutable WETH;
 
-    constructor(address _uniswapAddress) public {
+    constructor(address _uniswapRouterAddress) public {
         __Governable__init();
-        uniswapRouter = IUniswapV2Router02(_uniswapAddress);
-        WETH = IUniswapV2Router02(_uniswapAddress).WETH();
+        uniswapRouter = IUniswapV2Router02(_uniswapRouterAddress);
+        WETH = IUniswapV2Router02(_uniswapRouterAddress).WETH();
         isIBToken[IBETHV2] = true;
     }
 
@@ -54,39 +54,41 @@ contract HomoraIBSwap is Governable {
     }
 
     function getPath(address tokenIn, address tokenOut)
-        public
+        internal
         view
         returns (address[] memory path)
     {
-        address[] memory path;
         address underlyingTokenIn;
         address underlyingTokenOut;
 
         if (tokenIn == IBETHV2) {
-            underlyingTokenIn = WETH;
+            underlyingTokenIn = uniswapRouter.WETH();
         } else {
             underlyingTokenIn = SafeBox(tokenIn).uToken();
         }
 
         if (tokenOut == IBETHV2) {
-            underlyingTokenOut = WETH;
+            underlyingTokenOut = uniswapRouter.WETH();
         } else {
             underlyingTokenOut = SafeBox(tokenOut).uToken();
         }
 
-        if (underlyingTokenIn == WETH || underlyingTokenOut == WETH) {
+        if (
+            underlyingTokenIn == uniswapRouter.WETH() ||
+            underlyingTokenOut == uniswapRouter.WETH()
+        ) {
             path = new address[](2);
-            if (underlyingTokenIn == WETH) {
-                path[0] = WETH;
+            if (underlyingTokenIn == uniswapRouter.WETH()) {
+                path[0] = uniswapRouter.WETH();
                 path[1] = underlyingTokenOut;
             } else {
                 path[0] = underlyingTokenIn;
-                path[1] = WETH;
+                path[1] = uniswapRouter.WETH();
             }
         } else {
             path = new address[](3);
             path[0] = underlyingTokenIn;
-            path[1] = WETH;
+            path[1] = uniswapRouter.WETH();
             path[2] = underlyingTokenOut;
         }
     }
@@ -162,6 +164,8 @@ contract HomoraIBSwap is Governable {
         if (tokenIn != IBETHV2) {
             IERC20 underlying = IERC20(safeboxIn.uToken());
             underlyingBalance = underlying.balanceOf(address(this));
+        } else {
+            underlyingBalance = address(this).balance;
         }
 
         if (tokenIn != IBETHV2 && tokenOut != IBETHV2) {
@@ -173,7 +177,7 @@ contract HomoraIBSwap is Governable {
                 deadline
             );
         } else if (tokenIn == IBETHV2) {
-            uniswapRouter.swapExactETHForTokens{value: address(this).balance}(
+            uniswapRouter.swapExactETHForTokens{value: underlyingBalance}(
                 0,
                 path,
                 address(this),
@@ -197,10 +201,6 @@ contract HomoraIBSwap is Governable {
         } else {
             SafeBox safeboxOut = SafeBox(tokenOut);
 
-            IERC20(safeboxOut.uToken()).approve(
-                address(safeboxOut),
-                IERC20(safeboxOut.uToken()).balanceOf(address(this))
-            );
             safeboxOut.deposit(
                 IERC20(safeboxOut.uToken()).balanceOf(address(this))
             );

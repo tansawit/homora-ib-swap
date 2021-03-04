@@ -294,36 +294,12 @@ def check_expected(expected, actual, percent_threshold):
     return abs(actual - expected) / expected * 100 < percent_threshold
 
 
-def double_swap_check(ib_token_in, ib_token_out, amount_in, account):
-    # set input and output ibtoken contracts
-    token_in_safebox = Contract.from_abi("SafeBox", ib_token_in, SAFEBOX_ABI)
-    token_out_safebox = Contract.from_abi("SafeBox", ib_token_out, SAFEBOX_ABI)
-    # deploy contract
-    homora_earn_swap = HomoraIBSwap.deploy({"from": account})
-    # approve ibtokens
-    homora_earn_swap.addIBTokens([IBUSDT_ADDRESS, IBUSDC_ADDRESS, IBDAI_ADDRESS], {"from": account})
-    # estimate expected output token amount from swap
-    underlying_amount_in = homora_earn_swap.ibToToken(ib_token_in, amount_in)
-    estimate_amount_first_swap = homora_earn_swap.getEstimatedAmountsOut(
-        ibtoken_to_utoken[ib_token_in], WETH, underlying_amount_in
-    )[1]
-    estimate_amount_out = homora_earn_swap.getEstimatedAmountsOut(
-        WETH, ibtoken_to_utoken[ib_token_out], estimate_amount_first_swap
-    )[1]
-    # perform the swap
-    token_in_safebox.approve(homora_earn_swap.address, 1e36, {"from": account})
-    output = homora_earn_swap.swap(
-        ib_token_in, ib_token_out, amount_in, int(estimate_amount_out * 0.8), deadline, {"from": account}
-    )
-    return (homora_earn_swap, token_in_safebox, token_out_safebox, estimate_amount_out, output.return_value)
-
-
 def swap_single_check(ib_token_in, ib_token_out, amount_in, account):
     # set input and output ibtoken contracts
     token_in_safebox = Contract.from_abi("SafeBox", ib_token_in, SAFEBOX_ABI)
     token_out_safebox = Contract.from_abi("SafeBox", ib_token_out, SAFEBOX_ABI)
     # deploy contract
-    homora_earn_swap = HomoraIBSwap.deploy({"from": account})
+    homora_earn_swap = HomoraIBSwap.deploy("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", {"from": account})
     # approve ibtokens
     homora_earn_swap.addIBTokens([IBUSDT_ADDRESS, IBUSDC_ADDRESS, IBDAI_ADDRESS], {"from": account})
     # estimate expected output token amount from swap
@@ -332,7 +308,12 @@ def swap_single_check(ib_token_in, ib_token_out, amount_in, account):
     # perform the swap
     token_in_safebox.approve(homora_earn_swap.address, 1e36, {"from": account})
     output = homora_earn_swap.swap(
-        ib_token_in, ib_token_out, amount_in, int(estimate_amount_out * 0.9), deadline, {"from": account}
+        ib_token_in,
+        ib_token_out,
+        amount_in,
+        homora_earn_swap.tokenToIB(ib_token_out, int(estimate_amount_out * 0.9)),
+        deadline,
+        {"from": account},
     )
     return (homora_earn_swap, token_in_safebox, token_out_safebox, estimate_amount_out, output.return_value)
 
@@ -342,7 +323,7 @@ def swap_double_check(ib_token_in, ib_token_out, amount_in, account):
     token_in_safebox = Contract.from_abi("SafeBox", ib_token_in, SAFEBOX_ABI)
     token_out_safebox = Contract.from_abi("SafeBox", ib_token_out, SAFEBOX_ABI)
     # deploy contract
-    homora_earn_swap = HomoraIBSwap.deploy({"from": account})
+    homora_earn_swap = HomoraIBSwap.deploy("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", {"from": account})
     # approve ibtokens
     homora_earn_swap.addIBTokens([IBUSDT_ADDRESS, IBUSDC_ADDRESS, IBDAI_ADDRESS], {"from": account})
     # estimate expected output token amount from swap
@@ -351,7 +332,12 @@ def swap_double_check(ib_token_in, ib_token_out, amount_in, account):
     # perform the swap
     token_in_safebox.approve(homora_earn_swap.address, 1e36, {"from": account})
     output = homora_earn_swap.swap(
-        ib_token_in, ib_token_out, amount_in, int(estimate_amount_out * 0.9), deadline, {"from": account}
+        ib_token_in,
+        ib_token_out,
+        amount_in,
+        homora_earn_swap.tokenToIB(ib_token_out, int(estimate_amount_out * 0.9)),
+        deadline,
+        {"from": account},
     )
     return (homora_earn_swap, token_in_safebox, token_out_safebox, estimate_amount_out, output.return_value)
 
