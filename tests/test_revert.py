@@ -292,14 +292,18 @@ def account():
 
 
 def test_revert_send_ether(account):
-    homora_earn_swap = HomoraIBSwap.deploy("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", {"from": account})
+    homora_earn_swap = HomoraIBSwap.deploy(
+        "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", "0xeEa3311250FE4c3268F8E684f7C87A82fF183Ec1", {"from": account}
+    )
     with brownie.reverts("unexpected-eth-sender"):
         account.transfer(homora_earn_swap, "0.5 ether")
 
 
 def test_revert_add_ib_tokens(account):
     ens = accounts.at("0x37fabbfaf80501c68ee77625d620d6501b35417e", force=True)
-    homora_earn_swap = HomoraIBSwap.deploy("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", {"from": account})
+    homora_earn_swap = HomoraIBSwap.deploy(
+        "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", "0xeEa3311250FE4c3268F8E684f7C87A82fF183Ec1", {"from": account}
+    )
     with brownie.reverts("not the governor"):
         tx = homora_earn_swap.addIBTokens([IBUSDT_ADDRESS, IBUSDC_ADDRESS, IBDAI_ADDRESS], {"from": ens})
 

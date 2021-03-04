@@ -299,7 +299,9 @@ def swap_single_check(ib_token_in, ib_token_out, amount_in, account):
     token_in_safebox = Contract.from_abi("SafeBox", ib_token_in, SAFEBOX_ABI)
     token_out_safebox = Contract.from_abi("SafeBox", ib_token_out, SAFEBOX_ABI)
     # deploy contract
-    homora_earn_swap = HomoraIBSwap.deploy("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", {"from": account})
+    homora_earn_swap = HomoraIBSwap.deploy(
+        "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", "0xeEa3311250FE4c3268F8E684f7C87A82fF183Ec1", {"from": account}
+    )
     # approve ibtokens
     homora_earn_swap.addIBTokens([IBUSDT_ADDRESS, IBUSDC_ADDRESS, IBDAI_ADDRESS], {"from": account})
     # estimate expected output token amount from swap
@@ -323,7 +325,9 @@ def swap_double_check(ib_token_in, ib_token_out, amount_in, account):
     token_in_safebox = Contract.from_abi("SafeBox", ib_token_in, SAFEBOX_ABI)
     token_out_safebox = Contract.from_abi("SafeBox", ib_token_out, SAFEBOX_ABI)
     # deploy contract
-    homora_earn_swap = HomoraIBSwap.deploy("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", {"from": account})
+    homora_earn_swap = HomoraIBSwap.deploy(
+        "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", "0xeEa3311250FE4c3268F8E684f7C87A82fF183Ec1", {"from": account}
+    )
     # approve ibtokens
     homora_earn_swap.addIBTokens([IBUSDT_ADDRESS, IBUSDC_ADDRESS, IBDAI_ADDRESS], {"from": account})
     # estimate expected output token amount from swap

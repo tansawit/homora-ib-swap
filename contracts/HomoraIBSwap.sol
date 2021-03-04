@@ -20,18 +20,18 @@ contract HomoraIBSwap is Governable {
 
     mapping(address => bool) public isIBToken;
 
-    address public constant IBETHV2 =
-        0xeEa3311250FE4c3268F8E684f7C87A82fF183Ec1;
+    address public immutable IBETHV2;
 
     IUniswapV2Router02 public immutable uniswapRouter;
 
     address public immutable WETH;
 
-    constructor(address _uniswapRouterAddress) public {
+    constructor(address _uniswapRouterAddress, address _ibETHAddress) public {
         __Governable__init();
         uniswapRouter = IUniswapV2Router02(_uniswapRouterAddress);
+        IBETHV2 = _ibETHAddress;
+        isIBToken[_ibETHAddress] = true;
         WETH = IUniswapV2Router02(_uniswapRouterAddress).WETH();
-        isIBToken[IBETHV2] = true;
     }
 
     /// @notice add a list of token addresses as supported ibToken
