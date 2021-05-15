@@ -6,6 +6,7 @@ import "OpenZeppelin/openzeppelin-contracts@3.4.0/contracts/token/ERC20/IERC20.s
 import "OpenZeppelin/openzeppelin-contracts@3.4.0/contracts/token/ERC20/SafeERC20.sol";
 import "OpenZeppelin/openzeppelin-contracts@3.4.0/contracts/math/SafeMath.sol";
 import "./Governable.sol";
+import "../interfaces/IWETH.sol";
 import "../interfaces/IUniswapV2Router02.sol";
 import "../interfaces/ISafeBox.sol";
 import "../interfaces/ISafeBoxETH.sol";
@@ -22,21 +23,30 @@ contract HomoraIBSwap is Governable {
 
     address public immutable IBETHV2;
 
-    IUniswapV2Router02 public immutable uniswapRouter;
+    IUniswapV2Router02 public immutable router;
 
     address public immutable WETH;
 
-    constructor(address _uniswapRouterAddress, address _ibETHAddress) public {
+    constructor(address _routerAddress, address _ibETHAddress) public {
         __Governable__init();
-        uniswapRouter = IUniswapV2Router02(_uniswapRouterAddress);
+        router = IUniswapV2Router02(_routerAddress);
         IBETHV2 = _ibETHAddress;
         isIBToken[_ibETHAddress] = true;
-        WETH = IUniswapV2Router02(_uniswapRouterAddress).WETH();
+        WETH = IUniswapV2Router02(_routerAddress).WETH();
+
+        IWETH(IUniswapV2Router02(_routerAddress).WETH()).approve(
+            _routerAddress,
+            uint256(-1)
+        );
+        IWETH(IUniswapV2Router02(_routerAddress).WETH()).approve(
+            _ibETHAddress,
+            uint256(-1)
+        );
     }
 
     /// @notice add a list of token addresses as supported ibToken
     /// @param tokens list of symbols to support
-    function addIBTokens(address[] memory tokens) external onlyGov {
+    function addIBTokens(address[] calldata tokens) external onlyGov {
         for (uint256 idx = 0; idx < tokens.length; idx++) {
             require(
                 !isIBToken[tokens[idx]] && tokens[idx] != IBETHV2,
@@ -45,11 +55,9 @@ contract HomoraIBSwap is Governable {
             isIBToken[tokens[idx]] = true;
 
             SafeBox safebox = SafeBox(tokens[idx]);
-            IERC20(safebox.uToken()).safeApprove(
-                address(uniswapRouter),
-                uint256(-1)
-            );
-            IERC20(safebox.uToken()).safeApprove(address(safebox), uint256(-1));
+            address uToken = safebox.uToken();
+            IERC20(uToken).safeApprove(address(router), uint256(-1));
+            IERC20(uToken).safeApprove(address(safebox), uint256(-1));
         }
     }
 
@@ -61,34 +69,27 @@ contract HomoraIBSwap is Governable {
         address underlyingTokenIn;
         address underlyingTokenOut;
 
-        if (tokenIn == IBETHV2) {
-            underlyingTokenIn = uniswapRouter.WETH();
-        } else {
-            underlyingTokenIn = SafeBox(tokenIn).uToken();
-        }
+        underlyingTokenIn = tokenIn == IBETHV2
+            ? WETH
+            : SafeBox(tokenIn).uToken();
 
-        if (tokenOut == IBETHV2) {
-            underlyingTokenOut = uniswapRouter.WETH();
-        } else {
-            underlyingTokenOut = SafeBox(tokenOut).uToken();
-        }
+        underlyingTokenOut = tokenOut == IBETHV2
+            ? WETH
+            : SafeBox(tokenOut).uToken();
 
-        if (
-            underlyingTokenIn == uniswapRouter.WETH() ||
-            underlyingTokenOut == uniswapRouter.WETH()
-        ) {
+        if (underlyingTokenIn == WETH || underlyingTokenOut == WETH) {
             path = new address[](2);
-            if (underlyingTokenIn == uniswapRouter.WETH()) {
-                path[0] = uniswapRouter.WETH();
+            if (underlyingTokenIn == WETH) {
+                path[0] = WETH;
                 path[1] = underlyingTokenOut;
             } else {
                 path[0] = underlyingTokenIn;
-                path[1] = uniswapRouter.WETH();
+                path[1] = WETH;
             }
         } else {
             path = new address[](3);
             path[0] = underlyingTokenIn;
-            path[1] = uniswapRouter.WETH();
+            path[1] = WETH;
             path[2] = underlyingTokenOut;
         }
     }
@@ -103,8 +104,8 @@ contract HomoraIBSwap is Governable {
         address tokenOut,
         uint256 amountIn
     ) public view returns (uint256[] memory) {
-        return
-            uniswapRouter.getAmountsOut(amountIn, getPath(tokenIn, tokenOut));
+        require(tokenIn != tokenOut, "token-in-out-identical");
+        return router.getAmountsOut(amountIn, getPath(tokenIn, tokenOut));
     }
 
     /// @notice convert an amount of ibToken to that of the underlying token
@@ -116,9 +117,7 @@ contract HomoraIBSwap is Governable {
         returns (uint256)
     {
         CYToken cyToken = CYToken(SafeBox(ibToken).cToken());
-        uint256 tokenAmount =
-            ibTokenAmount.mul(cyToken.exchangeRateStored()).div(1e18);
-        return tokenAmount;
+        return ibTokenAmount.mul(cyToken.exchangeRateStored()).div(1e18);
     }
 
     /// @notice convert an amount of token to that of the associated ibToken
@@ -130,9 +129,7 @@ contract HomoraIBSwap is Governable {
         returns (uint256)
     {
         CYToken cyToken = CYToken(SafeBox(ibToken).cToken());
-        uint256 ibTokenAmount =
-            tokenAmount.mul(1e18).div(cyToken.exchangeRateStored());
-        return ibTokenAmount;
+        return tokenAmount.mul(1e18).div(cyToken.exchangeRateStored());
     }
 
     /// @notice swap an ibToken to another ibToken
@@ -153,67 +150,51 @@ contract HomoraIBSwap is Governable {
         require(isIBToken[tokenIn], "token-in-not-supported");
         require(isIBToken[tokenOut], "token-out-not-supported");
 
-        SafeBox safeboxIn = SafeBox(tokenIn);
-        safeboxIn.transferFrom(msg.sender, address(this), amountIn);
-        safeboxIn.withdraw(amountIn);
-
         uint256 underlyingBalance;
         address[] memory path = getPath(tokenIn, tokenOut);
         uint256 outputAmount;
 
-        if (tokenIn != IBETHV2) {
-            IERC20 underlying = IERC20(safeboxIn.uToken());
-            underlyingBalance = underlying.balanceOf(address(this));
+        SafeBox(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+        SafeBox(tokenIn).withdraw(amountIn);
+
+        if (tokenIn == IBETHV2) {
+            IWETH(WETH).deposit{value: address(this).balance}();
+            underlyingBalance = IWETH(WETH).balanceOf(address(this));
         } else {
-            underlyingBalance = address(this).balance;
+            IERC20 underlying = IERC20(SafeBox(tokenIn).uToken());
+            underlyingBalance = underlying.balanceOf(address(this));
         }
 
-        if (tokenIn != IBETHV2 && tokenOut != IBETHV2) {
-            uniswapRouter.swapExactTokensForTokens(
-                underlyingBalance,
-                0,
-                path,
-                address(this),
-                deadline
-            );
-        } else if (tokenIn == IBETHV2) {
-            uniswapRouter.swapExactETHForTokens{value: underlyingBalance}(
-                0,
-                path,
-                address(this),
-                deadline
-            );
-        } else if (tokenOut == IBETHV2) {
-            uniswapRouter.swapExactTokensForETH(
-                underlyingBalance,
-                0,
-                path,
-                address(this),
-                deadline
-            );
-        }
+        router.swapExactTokensForTokens(
+            underlyingBalance,
+            0,
+            path,
+            address(this),
+            deadline
+        );
 
         if (tokenOut == IBETHV2) {
+            IWETH(WETH).withdraw(IWETH(WETH).balanceOf(address(this)));
             SafeBoxETH safeboxOut = SafeBoxETH(tokenOut);
             safeboxOut.deposit{value: address(this).balance}();
-            outputAmount = safeboxOut.balanceOf(address(this));
-            safeboxOut.transfer(msg.sender, outputAmount);
         } else {
             SafeBox safeboxOut = SafeBox(tokenOut);
-
             safeboxOut.deposit(
                 IERC20(safeboxOut.uToken()).balanceOf(address(this))
             );
-            outputAmount = safeboxOut.balanceOf(address(this));
-            safeboxOut.transfer(msg.sender, outputAmount);
         }
+        outputAmount = SafeBox(tokenOut).balanceOf(address(this));
+        SafeBox(tokenOut).transfer(msg.sender, outputAmount);
+
         require(outputAmount >= amountOutMin, "insufficient-output-amount");
         return outputAmount;
     }
 
     receive() external payable {
         require(
-            msg.sender == IBETHV2 || msg.sender == address(uniswapRouter),
+            msg.sender == WETH ||
+                msg.sender == IBETHV2 ||
+                msg.sender == address(router),
             "unexpected-eth-sender"
         );
     }
