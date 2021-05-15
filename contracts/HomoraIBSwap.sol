@@ -66,27 +66,20 @@ contract HomoraIBSwap is Governable {
         view
         returns (address[] memory path)
     {
-        address underlyingTokenIn;
-        address underlyingTokenOut;
-
-        underlyingTokenIn = tokenIn == IBETHV2
-            ? WETH
-            : SafeBox(tokenIn).uToken();
-
-        underlyingTokenOut = tokenOut == IBETHV2
-            ? WETH
-            : SafeBox(tokenOut).uToken();
-
-        if (underlyingTokenIn == WETH || underlyingTokenOut == WETH) {
+        require(tokenIn != tokenOut, "token-in-out-identical");
+        if (tokenIn == IBETHV2) {
+            address underlyingTokenOut = SafeBox(tokenOut).uToken();
             path = new address[](2);
-            if (underlyingTokenIn == WETH) {
-                path[0] = WETH;
-                path[1] = underlyingTokenOut;
-            } else {
-                path[0] = underlyingTokenIn;
-                path[1] = WETH;
-            }
+            path[0] = WETH;
+            path[1] = underlyingTokenOut;
+        } else if (tokenOut == IBETHV2) {
+            address underlyingTokenIn = SafeBox(tokenIn).uToken();
+            path = new address[](2);
+            path[0] = underlyingTokenIn;
+            path[1] = WETH;
         } else {
+            address underlyingTokenIn = SafeBox(tokenIn).uToken();
+            address underlyingTokenOut = SafeBox(tokenOut).uToken();
             path = new address[](3);
             path[0] = underlyingTokenIn;
             path[1] = WETH;
@@ -104,7 +97,6 @@ contract HomoraIBSwap is Governable {
         address tokenOut,
         uint256 amountIn
     ) public view returns (uint256[] memory) {
-        require(tokenIn != tokenOut, "token-in-out-identical");
         return router.getAmountsOut(amountIn, getPath(tokenIn, tokenOut));
     }
 
@@ -151,8 +143,8 @@ contract HomoraIBSwap is Governable {
         require(isIBToken[tokenOut], "token-out-not-supported");
 
         uint256 underlyingBalance;
-        address[] memory path = getPath(tokenIn, tokenOut);
         uint256 outputAmount;
+        address[] memory path = getPath(tokenIn, tokenOut);
 
         SafeBox(tokenIn).transferFrom(msg.sender, address(this), amountIn);
         SafeBox(tokenIn).withdraw(amountIn);
