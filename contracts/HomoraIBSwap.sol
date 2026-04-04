@@ -176,7 +176,7 @@ contract HomoraIBSwap is Governable {
             );
         }
         outputAmount = SafeBox(tokenOut).balanceOf(address(this));
-        SafeBox(tokenOut).transfer(msg.sender, outputAmount);
+        IERC20(tokenOut).safeTransfer(msg.sender, outputAmount);
 
         require(outputAmount >= amountOutMin, "insufficient-output-amount");
         return outputAmount;
